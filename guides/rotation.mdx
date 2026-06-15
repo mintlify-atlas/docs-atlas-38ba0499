@@ -1,0 +1,70 @@
+---
+title: "Setting Touch Screen Rotation to Match Your Display"
+sidebarTitle: "Rotation"
+description: "Use setRotation(0–3) to align XPT2046 touch coordinates with your TFT display orientation. Matches the rotation modes used in ILI9341_t3 and Adafruit libraries."
+---
+
+The XPT2046 reports raw 12-bit ADC values for the X and Y axes. These raw values do not automatically correspond to pixel coordinates on your screen — their mapping depends on how the touchscreen overlay is oriented relative to the display. `setRotation(n)` remaps the raw values so that the touch coordinates align with the pixel coordinates produced by your TFT display library.
+
+## Rotation Values
+
+Pass a value from `0` to `3` to `setRotation()`. The default after calling `begin()` is `1`. Each value applies a 90-degree step and an optional axis inversion, matching the rotation convention used by `ILI9341_t3` and the Adafruit display libraries.
+
+| Value | Reported x | Reported y | Orientation |
+|---|---|---|---|
+| `0` | `4095 − y_raw` | `x_raw` | Portrait, connector at top |
+| `1` | `x_raw` | `y_raw` | Landscape (default) |
+| `2` | `y_raw` | `4095 − x_raw` | Portrait, connector at bottom |
+| `3` | `4095 − x_raw` | `4095 − y_raw` | Landscape, upside-down |
+
+All output coordinates lie in the range **0–4095** regardless of rotation. Scaling to pixel coordinates is left to your application.
+
+## Basic Usage
+
+```cpp
+void setup() {
+  ts.begin();
+  ts.setRotation(1); // match ILI9341 setRotation(1)
+}
+```
+
+You can also call `setRotation()` at any time after `begin()` — it takes effect immediately on the next `getPoint()` or `readData()` call.
+
+<Tip>
+Always set `ts.setRotation(n)` to the **same value** you pass to your TFT display driver. If your sketch calls `tft.setRotation(2)`, call `ts.setRotation(2)` as well.
+</Tip>
+
+## Finding the Right Rotation
+
+If touch coordinates feel inverted or mirrored, work through the four values systematically:
+
+<Steps>
+  <Step title="Start with rotation 1">
+    Call `ts.setRotation(1)`. Draw a crosshair at the centre of your display and touch it. Print `p.x` and `p.y` to the serial monitor.
+  </Step>
+  <Step title="Touch the corners">
+    Touch each corner of the screen and note the x/y values. The top-left corner should produce low x and low y; bottom-right should produce high x and high y for landscape orientation.
+  </Step>
+  <Step title="Check for mirroring">
+    If x increases towards the left instead of the right, try `setRotation(3)` (landscape, flipped). If x and y axes are swapped, switch to a portrait mode (`0` or `2`).
+  </Step>
+  <Step title="Check portrait modes">
+    For portrait orientation, try `setRotation(0)`. If the top and bottom are reversed, switch to `setRotation(2)`.
+  </Step>
+</Steps>
+
+## Coordinate Scaling Example
+
+Raw coordinates span 0–4095. To convert to screen pixels, scale linearly to your display resolution:
+
+```cpp
+TS_Point p = ts.getPoint();
+
+// Map raw 0–4095 to display pixels (e.g. 320×240 landscape)
+int16_t screenX = map(p.x, 0, 4095, 0, 319);
+int16_t screenY = map(p.y, 0, 4095, 0, 239);
+```
+
+<Note>
+The `map()` function performs integer linear interpolation. For best accuracy, calibrate the minimum and maximum raw values by touching the actual corners of your specific display, since the active touch area rarely spans the full 0–4095 range.
+</Note>

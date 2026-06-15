@@ -1,0 +1,121 @@
+---
+title: "Adafruit_STMPE610 Drop-In Compatibility Guide"
+sidebarTitle: "Adafruit Compat"
+description: "XPT2046_Touchscreen is API-compatible with Adafruit_STMPE610. Migrate existing sketches by swapping the library include and constructor with no other code changes."
+---
+
+XPT2046_Touchscreen is intentionally designed to mirror the API of `Adafruit_STMPE610`, the library used by Adafruit's resistive touchscreen breakouts. Sketches written for Adafruit touch controllers can be migrated to XPT2046-based displays by changing only the `#include` directive and the object constructor — every touch-reading call stays identical.
+
+## Compatible Functions
+
+The following functions are present in both libraries with the same names, parameter types, and return value ranges:
+
+| Function | Description |
+|---|---|
+| `touched()` | Returns `true` if the screen is currently being touched |
+| `getPoint()` | Returns a `TS_Point` with `x`, `y`, and `z` fields |
+| `readData(x, y, z)` | Writes current touch coordinates into pointer arguments |
+| `bufferEmpty()` | Returns `true` when no fresh data is buffered |
+| `bufferSize()` | Returns the number of points in the buffer |
+
+Coordinate values are in the range **0–4095** for both `x` and `y` in both libraries, so any existing scaling or mapping code requires no changes.
+
+## Migration Steps
+
+<Steps>
+  <Step title="Replace the include directive">
+    Swap the Adafruit library header for the XPT2046 header:
+
+    ```cpp
+    // Before
+    #include <Adafruit_STMPE610.h>
+
+    // After
+    #include <XPT2046_Touchscreen.h>
+    ```
+  </Step>
+  <Step title="Replace the object declaration">
+    Change the class name and remove any I²C address or extra arguments used by the STMPE610 constructor:
+
+    ```cpp
+    // Before
+    Adafruit_STMPE610 ts = Adafruit_STMPE610(CS_PIN);
+
+    // After
+    XPT2046_Touchscreen ts(CS_PIN);
+    ```
+  </Step>
+  <Step title="Keep all other touch code unchanged">
+    Every call to `touched()`, `getPoint()`, `readData()`, and `bufferEmpty()` compiles and behaves identically — no further edits are required.
+  </Step>
+</Steps>
+
+## Before / After Comparison
+
+```cpp
+// ── BEFORE (Adafruit_STMPE610) ────────────────────────────────────────────
+#include <Adafruit_STMPE610.h>
+
+#define CS_PIN 8
+Adafruit_STMPE610 ts = Adafruit_STMPE610(CS_PIN);
+
+void setup() { ts.begin(); }
+
+void loop() {
+  if (!ts.bufferEmpty()) {
+    uint16_t x, y;
+    uint8_t  z;
+    ts.readData(&x, &y, &z);
+  }
+}
+
+// ── AFTER (XPT2046_Touchscreen) ───────────────────────────────────────────
+#include <XPT2046_Touchscreen.h>   // ← only line 1 changed
+
+#define CS_PIN 8
+XPT2046_Touchscreen ts(CS_PIN);   // ← only line 2 changed
+
+void setup() { ts.begin(); }
+
+void loop() {
+  if (!ts.bufferEmpty()) {        // ← unchanged
+    uint16_t x, y;
+    uint8_t  z;
+    ts.readData(&x, &y, &z);      // ← unchanged
+  }
+}
+```
+
+## Behavioural Differences to Be Aware Of
+
+<Note>
+**`bufferSize()` always returns `1`.** The STMPE610 has a 128-point hardware FIFO, so sketches that loop on `bufferSize()` to drain multiple queued points will simply read one point per call. In practice this is rarely a problem, as most sketches only read one point per `loop()` iteration.
+</Note>
+
+<Note>
+**`bufferEmpty()` is time-based.** Rather than checking a hardware FIFO, this library returns `true` when the last successful SPI read occurred fewer than 3 ms ago (`MSEC_THRESHOLD`). This prevents redundant reads within the same millisecond window and closely mimics the STMPE610 FIFO drain behaviour for typical polling rates.
+</Note>
+
+## XPT2046-Specific Enhancement: IRQ Pin
+
+<Tip>
+The interrupt-pin workflow is an XPT2046-specific feature not present in `Adafruit_STMPE610`, but it is fully additive. Pass a `TIRQ_PIN` as the second constructor argument to gain interrupt-driven touch detection without changing any of your existing touch-reading code:
+
+```cpp
+#define TIRQ_PIN 2
+XPT2046_Touchscreen ts(CS_PIN, TIRQ_PIN);
+
+void loop() {
+  // Optional fast guard — no SPI occurs when screen is idle
+  if (ts.tirqTouched()) {
+    if (!ts.bufferEmpty()) {
+      uint16_t x, y;
+      uint8_t  z;
+      ts.readData(&x, &y, &z);
+    }
+  }
+}
+```
+
+See the [Interrupt Pin guide](/guides/interrupt-pin) for full details.
+</Tip>

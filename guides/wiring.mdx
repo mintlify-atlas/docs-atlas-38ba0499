@@ -1,0 +1,81 @@
+---
+title: "Wiring XPT2046 Touchscreen to Arduino and Teensy"
+sidebarTitle: "Wiring"
+description: "Connect an XPT2046 touch display to Arduino Uno, Mega, Teensy, ESP32, or ESP8266 using SPI. Pin mapping, CS wiring, and optional T_IRQ connection."
+---
+
+The XPT2046 communicates over SPI and exposes five pins on most TFT breakout modules: `T_CLK` (clock), `T_DIN` (MOSI), `T_DO` (MISO), `T_CS` (chip select), and `T_IRQ` (touch interrupt). The first four are required; `T_IRQ` is optional but enables interrupt-driven touch detection. The SPI data pins are shared with the board's hardware SPI bus, while `T_CS` and `T_IRQ` can be connected to any available digital GPIO.
+
+## SPI Pin Mapping by Board
+
+The library uses the hardware SPI peripheral automatically. Connect `T_CLK`, `T_DIN`, and `T_DO` to the corresponding SPI pins for your board:
+
+| Board | MOSI | MISO | SCK |
+|---|---|---|---|
+| Arduino Uno / Nano | 11 | 12 | 13 |
+| Arduino Mega | 51 | 50 | 52 |
+| Teensy 4.x (SPI0) | 11 | 12 | 13 |
+| ESP32 (VSPI) | 23 | 19 | 18 |
+| ESP8266 | D7 | D6 | D5 |
+
+## TFT Module Wiring Table
+
+Most low-cost TFT modules label their touch pins with a `T_` prefix. Wire them as follows:
+
+| TFT Module Pin | Function | Connect To |
+|---|---|---|
+| T_CS | Chip Select | Any GPIO (e.g. D8) |
+| T_CLK | SPI Clock | SCK |
+| T_DIN | SPI MOSI | MOSI |
+| T_DO | SPI MISO | MISO |
+| T_IRQ | Touch Interrupt | Any interrupt-capable pin (optional) |
+
+## Defining Pins in Your Sketch
+
+The CS pin number is passed directly to the `XPT2046_Touchscreen` constructor. The `TIRQ_PIN` argument is optional — pass it only if you have `T_IRQ` wired up and want interrupt-driven touch detection.
+
+```cpp
+#include <XPT2046_Touchscreen.h>
+#include <SPI.h>
+
+#define CS_PIN    8
+#define TIRQ_PIN  2
+
+// With interrupt pin (recommended):
+XPT2046_Touchscreen ts(CS_PIN, TIRQ_PIN);
+
+// Without interrupt pin:
+// XPT2046_Touchscreen ts(CS_PIN);
+```
+
+Call `ts.begin()` inside `setup()` to initialise the SPI bus and configure the CS pin as an output:
+
+```cpp
+void setup() {
+  ts.begin();
+  ts.setRotation(1);
+}
+```
+
+## Sharing SPI with a TFT Display
+
+<Note>
+When a TFT display driver (such as ILI9341) and the XPT2046 touchscreen share the same SPI bus, each device **must** have its own dedicated CS pin. The library uses Arduino's `SPI.beginTransaction()` / `SPI.endTransaction()` API, so bus access is correctly arbitrated between devices.
+</Note>
+
+A typical two-device setup wires the display CS to one pin and the touch CS to another:
+
+```cpp
+#define TFT_CS   10   // display chip select
+#define TOUCH_CS  8   // touchscreen chip select
+```
+
+## Using an Alternate SPI Port
+
+<Tip>
+On boards with multiple SPI peripherals (e.g. Teensy 4.x), you can pass a different `SPIClass` instance to `begin()`. This is useful when the primary SPI bus is already heavily used by other peripherals.
+</Tip>
+
+```cpp
+ts.begin(SPI1); // use SPI1 instead of the default SPI0
+```

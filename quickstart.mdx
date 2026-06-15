@@ -1,47 +1,148 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with XPT2046 Touchscreen in 5 Minutes"
+sidebarTitle: "Quickstart"
+description: "Wire up an XPT2046 touch display, include the library, initialize over SPI, and read live touch coordinates in under 5 minutes."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
+This guide walks you through everything needed to detect a touch and print live X, Y, and pressure coordinates to the Serial Monitor. From a fresh install to your first working output takes fewer than five minutes.
 
 ## Prerequisites
 
-Before you begin, you must have:
+Before starting, make sure you have the following:
 
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
+- The **XPT2046_Touchscreen** library installed (see [Installation](/installation))
+- An Arduino-compatible board with a hardware SPI port (Arduino Uno, Mega, Leonardo, Teensy, ESP8266, ESP32, or similar)
+- An XPT2046-based TFT touch module — these are the inexpensive 2.4″/2.8″/3.2″ color displays that expose `T_CS`, `T_CLK`, `T_DIN`, `T_DO`, and (optionally) `T_IRQ` pins
+- A USB cable and the Arduino IDE or PlatformIO
 
-## Get started
+## Step-by-Step Setup
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+  <Step title="Define the chip-select pin">
+    The only pin you must configure yourself is the chip-select (CS) line that connects to the display's `T_CS` pin. The SPI clock, MOSI, and MISO lines are managed by the SPI library using the hardware SPI pins for your board (pins 13, 11, 12 on Arduino Uno).
 
-    ```bash
-    npm install your-package
+    ```cpp
+    #define CS_PIN   8   // T_CS on the display → pin 8 on Arduino Uno
+    ```
+
+    Optionally, define the touch-interrupt pin if your display's `T_IRQ` line is wired up. Using the interrupt pin makes `touched()` and `getPoint()` skip the SPI bus entirely when no touch is present, reducing overhead and preventing spurious SPI activity.
+
+    ```cpp
+    #define TIRQ_PIN  2   // T_IRQ on the display → pin 2 on Arduino Uno
     ```
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
+  <Step title="Create the touchscreen instance">
+    Declare an `XPT2046_Touchscreen` object at global scope (outside any function). Pass the CS pin as the first argument. The second argument is the optional interrupt pin — omit it or pass `255` to disable interrupt-driven polling.
 
-    ```bash
-    your-cli init
+    ```cpp
+    // Without interrupt pin:
+    XPT2046_Touchscreen ts(CS_PIN);
+
+    // With interrupt pin (recommended when wired):
+    XPT2046_Touchscreen ts(CS_PIN, TIRQ_PIN);
     ```
+
+    <Note>
+    The constructor is `constexpr`, so the object is fully initialized at compile time. No heap allocation takes place.
+    </Note>
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
+  <Step title="Initialize in setup()">
+    Call `ts.begin()` inside `setup()` to initialize the SPI bus and configure the CS pin as an output. Follow it with `ts.setRotation(n)` to align the touch coordinate frame with your display orientation, where `n` is 0–3 matching the rotation value you pass to your TFT library.
 
-    ```bash
-    your-cli start
+    ```cpp
+    void setup() {
+      Serial.begin(38400);
+      while (!Serial && (millis() <= 1000));  // wait for USB Serial on Teensy/Leonardo
+
+      ts.begin();          // initialize SPI and CS pin
+      ts.setRotation(1);   // rotate to match landscape display orientation
+    }
     ```
+
+    To use a non-default SPI port, pass it to `begin()`:
+
+    ```cpp
+    ts.begin(SPI1);  // use SPI1 instead of the default SPI
+    ```
+
+    <Tip>
+    `setRotation(1)` is the most common setting for landscape-oriented displays. If your X and Y axes appear swapped or inverted, try values 0, 2, and 3 until the coordinates match your display's visible orientation.
+    </Tip>
+  </Step>
+  <Step title="Read touch data in loop()">
+    Call `ts.touched()` to check whether the screen is currently being pressed. When it returns `true`, call `ts.getPoint()` to retrieve the current position as a `TS_Point` struct containing `x`, `y`, and `z` fields.
+
+    ```cpp
+    void loop() {
+      if (ts.touched()) {
+        TS_Point p = ts.getPoint();
+        Serial.print("Pressure = ");
+        Serial.print(p.z);
+        Serial.print(", x = ");
+        Serial.print(p.x);
+        Serial.print(", y = ");
+        Serial.print(p.y);
+        Serial.println();
+        delay(30);
+      }
+    }
+    ```
+
+    - `p.x` and `p.y` are 12-bit values in the range **0–4095**.
+    - `p.z` is a 12-bit pressure value in the range **0–4095**. `touched()` returns `true` only when `p.z` is at or above the internal threshold of **300**, which reliably filters light contact noise.
   </Step>
 </Steps>
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+## Complete Sketch
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
+The following sketch combines all four steps into a single ready-to-upload file. It mirrors the `TouchTest` example that ships with the library. Wire your display's `T_CS` to pin 8, `T_IRQ` to pin 2, and the SPI lines (`T_CLK`→13, `T_DIN`→11, `T_DO`→12) using the Arduino Uno hardware SPI pins, then open the Serial Monitor at **38400 baud**.
+
+```cpp
+#include <SPI.h>
+#include <XPT2046_Touchscreen.h>
+
+// Arduino Uno hardware SPI: MOSI=11, MISO=12, SCK=13
+#define CS_PIN    8
+#define TIRQ_PIN  2
+
+// Interrupt-enabled polling: no SPI traffic when the screen is not touched
+XPT2046_Touchscreen ts(CS_PIN, TIRQ_PIN);
+
+void setup() {
+  Serial.begin(38400);
+  while (!Serial && (millis() <= 1000));  // brief wait for USB Serial
+
+  ts.begin();
+  ts.setRotation(1);  // landscape orientation
+}
+
+void loop() {
+  if (ts.touched()) {
+    TS_Point p = ts.getPoint();
+    Serial.print("Pressure = ");
+    Serial.print(p.z);
+    Serial.print(", x = ");
+    Serial.print(p.x);
+    Serial.print(", y = ");
+    Serial.print(p.y);
+    Serial.println();
+    delay(30);
+  }
+}
+```
+
+<Tip>
+If you do not have `T_IRQ` wired, replace the constructor with `XPT2046_Touchscreen ts(CS_PIN);` — everything else stays the same. The library will poll the SPI bus on every call to `touched()` instead of relying on the interrupt signal.
 </Tip>
+
+## Expected Serial Output
+
+When you touch the display and open the Serial Monitor at 38400 baud, you should see lines similar to:
+
+```
+Pressure = 852, x = 2105, y = 1534
+Pressure = 901, x = 2109, y = 1540
+Pressure = 783, x = 2098, y = 1529
+```
+
+X and Y values shift as you drag your finger across the screen. Pressure (`z`) rises with firmer contact and drops to zero when you lift your finger.

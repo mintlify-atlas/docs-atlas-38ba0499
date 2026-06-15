@@ -1,0 +1,158 @@
+---
+title: "TouchTest: Basic XPT2046 Touch Coordinate Logging"
+sidebarTitle: "TouchTest"
+description: "The TouchTest sketch reads X, Y, and pressure coordinates from an XPT2046 display and prints them to Serial. Demonstrates touched() and getPoint() basics."
+---
+
+The **TouchTest** example is the quickest way to verify that your XPT2046 touch controller is wired correctly and responding. Every time you press the screen, it reads the raw X, Y, and Z (pressure) values and prints them to the Arduino Serial Monitor. By the end of this walkthrough you will understand the three constructor options, how `ts.begin()` initialises the SPI bus, and what `ts.touched()` and `ts.getPoint()` actually return.
+
+## Hardware Required
+
+<CardGroup cols={2}>
+  <Card title="Microcontroller" icon="microchip">
+    Any Arduino-compatible board that exposes a hardware SPI bus (Uno, Mega, Teensy, ESP32, etc.)
+  </Card>
+  <Card title="Display Module" icon="display">
+    Any XPT2046-based resistive TFT module (2.4″ or 2.8″ ILI9341 combo boards are most common)
+  </Card>
+</CardGroup>
+
+### Default Pin Assignments
+
+| Signal | Arduino Pin |
+|--------|-------------|
+| CS (T_CS) | 8 |
+| MOSI | 11 |
+| MISO | 12 |
+| SCK | 13 |
+| TIRQ (optional) | 2 |
+
+## Full Source Code
+
+```cpp
+#include <XPT2046_Touchscreen.h>
+#include <SPI.h>
+
+#define CS_PIN  8
+// MOSI=11, MISO=12, SCK=13
+
+//XPT2046_Touchscreen ts(CS_PIN);
+#define TIRQ_PIN  2
+//XPT2046_Touchscreen ts(CS_PIN);  // Param 2 - NULL - No interrupts
+//XPT2046_Touchscreen ts(CS_PIN, 255);  // Param 2 - 255 - No interrupts
+XPT2046_Touchscreen ts(CS_PIN, TIRQ_PIN);  // Param 2 - Touch IRQ Pin - interrupt enabled polling
+
+void setup() {
+  Serial.begin(38400);
+  ts.begin();
+  // ts.begin(SPI1); // use alternate SPI port
+  ts.setRotation(1);
+  while (!Serial && (millis() <= 1000));
+}
+
+void loop() {
+  if (ts.touched()) {
+    TS_Point p = ts.getPoint();
+    Serial.print("Pressure = ");
+    Serial.print(p.z);
+    Serial.print(", x = ");
+    Serial.print(p.x);
+    Serial.print(", y = ");
+    Serial.print(p.y);
+    delay(30);
+    Serial.println();
+  }
+}
+```
+
+## Code Walkthrough
+
+<Steps>
+  <Step title="Constructor Options">
+    Three constructor forms are shown — two are commented out so you can swap between them:
+
+    ```cpp
+    XPT2046_Touchscreen ts(CS_PIN);           // No interrupts (default tirqPin = 255)
+    XPT2046_Touchscreen ts(CS_PIN, 255);      // Explicit: no interrupts
+    XPT2046_Touchscreen ts(CS_PIN, TIRQ_PIN); // T_IRQ pin connected, interrupt-enabled polling
+    ```
+
+    The active line uses `TIRQ_PIN` (pin 2). When a valid pin is passed, `begin()` will call `attachInterrupt()` on that pin and the library sets the internal `isrWake` flag on every falling edge. When no interrupt pin is used (255), every call to `touched()` performs a full SPI read regardless of screen state.
+  </Step>
+
+  <Step title="ts.begin()">
+    `ts.begin()` performs three jobs: it stores a reference to the SPI bus (`SPI` by default, or an alternate port if you pass one like `SPI1`), asserts the CS pin HIGH to deselect the chip, and — if a valid `tirqPin` was provided to the constructor — attaches a falling-edge ISR that sets `isrWake = true`.
+
+    ```cpp
+    ts.begin();
+    // ts.begin(SPI1); // use alternate SPI port
+    ```
+  </Step>
+
+  <Step title="setRotation(1) — Landscape Mode">
+    `setRotation(n)` rotates the coordinate frame to match how the display is physically oriented. The value is taken modulo 4:
+
+    | n | Orientation |
+    |---|-------------|
+    | 0 | Portrait |
+    | 1 | Landscape |
+    | 2 | Portrait (flipped) |
+    | 3 | Landscape (flipped) |
+
+    When sharing a display driver such as ILI9341_t3 or Adafruit_ILI9341, both the display and the touchscreen must be set to the **same** rotation value so touch coordinates map correctly onto screen pixels.
+  </Step>
+
+  <Step title="ts.touched() — Detecting a Press">
+    `ts.touched()` initiates an SPI transaction to sample the Z (pressure) channel. It returns `true` when the measured pressure is **≥ 300** raw ADC counts. Values below that threshold are treated as noise or a released screen.
+
+    ```cpp
+    if (ts.touched()) {
+      // screen is being pressed
+    }
+    ```
+  </Step>
+
+  <Step title="ts.getPoint() — Reading Coordinates">
+    `ts.getPoint()` returns a `TS_Point` struct containing three `int16_t` members:
+
+    | Member | Range | Meaning |
+    |--------|-------|---------|
+    | `p.x` | 0 – 4095 | Horizontal position |
+    | `p.y` | 0 – 4095 | Vertical position |
+    | `p.z` | 0 – 4095 | Touch pressure (higher = harder press) |
+
+    ```cpp
+    TS_Point p = ts.getPoint();
+    Serial.print("Pressure = ");
+    Serial.print(p.z);
+    Serial.print(", x = ");
+    Serial.print(p.x);
+    Serial.print(", y = ");
+    Serial.print(p.y);
+    ```
+  </Step>
+
+  <Step title="delay(30) — Throttling Serial Output">
+    The 30 ms delay after reading the point prevents the Serial Monitor from being flooded with hundreds of identical readings during a single sustained press. It is placed **after** capturing the point so the read latency itself does not cause missed touches.
+  </Step>
+</Steps>
+
+## Expected Serial Output
+
+Open the Serial Monitor (or any terminal) at **38400 baud**. Each touch event produces one line:
+
+```
+Pressure = 1823, x = 2047, y = 1024
+Pressure = 1901, x = 2051, y = 1028
+Pressure = 1745, x = 1998, y = 1031
+```
+
+X increases from left to right and Y increases from top to bottom in rotation 1 (landscape). Touch each corner of the screen in turn to observe how the values change across the full 0–4095 range.
+
+<Tip>
+  If the Serial Monitor shows no output at all, verify that the baud rate is set to **38400** — the sketch will not print anything if the baud rates do not match. If values are wildly inconsistent, check that CS is wired to pin 8 and that MISO/MOSI are not swapped.
+</Tip>
+
+<Note>
+  The `while (!Serial && (millis() <= 1000));` line at the end of `setup()` gives USB-serial boards (like the Teensy or Leonardo) up to one second to enumerate on the host before the sketch continues. On classic Uno/Mega boards with a separate USB-to-serial chip this line has no effect and can be left as-is.
+</Note>

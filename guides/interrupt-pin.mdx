@@ -1,0 +1,109 @@
+---
+title: "Using the T_IRQ Interrupt Pin with XPT2046"
+sidebarTitle: "Interrupt Pin"
+description: "Connect T_IRQ to an interrupt-capable pin and use tirqTouched() to skip SPI reads when the screen is idle, reducing loop() overhead significantly."
+---
+
+The XPT2046 chip has a dedicated interrupt output pin, typically labelled `T_IRQ` on low-cost TFT modules. This pin is driven LOW whenever the screen is being touched, and also while the controller is transmitting SPI data. The library provides built-in support for this pin that lets your `loop()` skip all SPI activity when the screen has not been touched, which reduces CPU overhead and avoids blocking other SPI peripherals.
+
+## How T_IRQ Works
+
+When `T_IRQ` is wired to an interrupt-capable GPIO and passed to the constructor, `begin()` calls `attachInterrupt()` internally. The library's ISR sets a single boolean flag (`isrWake`) on each falling edge. Calling `tirqTouched()` reads that flag without touching the SPI bus at all — it returns `true` only when an interrupt has been recorded since the last confirmed read. You then call `touched()` to confirm the press and retrieve valid coordinates.
+
+## Two Modes of Operation
+
+<Tabs>
+  <Tab title="Built-in support (recommended)">
+    Pass `TIRQ_PIN` to the constructor. The library registers its own ISR automatically — you do not need to call `attachInterrupt()` yourself.
+
+    ```cpp
+    #define CS_PIN    8
+    #define TIRQ_PIN  2
+
+    XPT2046_Touchscreen ts(CS_PIN, TIRQ_PIN);
+    ```
+
+    In `loop()`, gate all SPI activity behind `tirqTouched()`:
+
+    ```cpp
+    void loop() {
+      // tirqTouched() checks a flag — no SPI transaction occurs
+      if (ts.tirqTouched()) {
+        if (ts.touched()) {
+          TS_Point p = ts.getPoint();
+          Serial.print("Pressure = ");
+          Serial.print(p.z);
+          Serial.print(", x = ");
+          Serial.print(p.x);
+          Serial.print(", y = ");
+          Serial.println(p.y);
+        }
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="No interrupt pin">
+    If `T_IRQ` is not connected, omit the second constructor argument and call `touched()` directly. Every call performs a full SPI read.
+
+    ```cpp
+    XPT2046_Touchscreen ts(CS_PIN); // no IRQ pin
+
+    void loop() {
+      if (ts.touched()) {
+        TS_Point p = ts.getPoint();
+        // use p.x, p.y, p.z
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Performance Benefit
+
+`tirqTouched()` inspects the `isrWake` boolean directly — there is no SPI transaction, no `digitalWrite()`, and no bus arbitration. In projects where other SPI devices (displays, SD cards, sensors) share the bus, this prevents unnecessary bus contention on every `loop()` iteration when the screen is idle.
+
+<Note>
+The internal ISR sets `isrWake = true` on every falling edge of `T_IRQ`. After a successful touch read where pressure falls below the low threshold (`Z_THRESHOLD_INT = 75`), the library clears the flag automatically so the next `tirqTouched()` call returns `false` until the screen is touched again.
+</Note>
+
+## Warning: Custom Interrupt Handlers
+
+<Warning>
+If you attach your own ISR to `T_IRQ` with `attachInterrupt()`, do **not** read touch coordinates inside that ISR. Because `T_IRQ` is also driven LOW during SPI reads, initiating a touch read from within the ISR will immediately re-trigger the interrupt, creating an infinite interrupt loop. Use `tirqTouched()` in `loop()` instead of a custom ISR for the vast majority of applications.
+</Warning>
+
+If you need custom interrupt behaviour alongside SPI sharing, inform the SPI library first:
+
+```cpp
+SPI.usingInterrupt(digitalPinToInterrupt(TIRQ_PIN));
+attachInterrupt(digitalPinToInterrupt(TIRQ_PIN), myHandler, FALLING);
+```
+
+## Deep Sleep Wakeup
+
+The `T_IRQ` falling edge can wake a microcontroller from deep sleep. The key requirement is to stop all touch reads before sleeping and disable the interrupt again before resuming reads on wakeup.
+
+```cpp
+void enterSleep() {
+  // 1. Stop processing touch data
+  // 2. Attach wakeup interrupt
+  attachInterrupt(digitalPinToInterrupt(TIRQ_PIN), wakeISR, FALLING);
+
+  // 3. Enter deep sleep (platform-specific)
+  // e.g. Teensy: SnoozeUSBSerial, ESP32: esp_deep_sleep_start(), etc.
+}
+
+void wakeISR() {
+  // Minimal ISR — just detach to prevent re-triggering during SPI reads
+  detachInterrupt(digitalPinToInterrupt(TIRQ_PIN));
+}
+
+void resumeAfterSleep() {
+  // Re-attach the library's built-in ISR by re-calling begin()
+  ts.begin();
+}
+```
+
+<Tip>
+On Teensy and ESP32 platforms, the library's ISR is placed in fast RAM automatically via the `ISR_PREFIX` macro (`IRAM_ATTR` on ESP32, `ICACHE_RAM_ATTR` on ESP8266), so wakeup latency is minimal.
+</Tip>

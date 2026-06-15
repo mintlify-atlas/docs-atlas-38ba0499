@@ -1,0 +1,144 @@
+---
+title: "TouchTestIRQ: Efficient Touch Polling with T_IRQ Pin"
+sidebarTitle: "TouchTestIRQ"
+description: "TouchTestIRQ uses tirqTouched() to check the T_IRQ interrupt flag before calling touched(), eliminating SPI overhead when the screen is idle."
+---
+
+The **TouchTestIRQ** example demonstrates a two-stage touch-detection pattern that is strictly more efficient than calling `touched()` directly on every `loop()` iteration. The first stage calls `ts.tirqTouched()`, which reads a boolean flag that the interrupt service routine (ISR) sets whenever the T_IRQ pin falls — no SPI transaction required. Only when that flag is true does the sketch proceed to the second stage: `ts.touched()`, which performs the actual SPI read and pressure check. The result is that the SPI bus is left completely idle whenever nothing is touching the screen.
+
+## Hardware Required
+
+The T_IRQ interrupt pin **must** be physically connected for this example to work as described. Connect the T_IRQ (or TIRQ) pad on your TFT module to pin 2 on your Arduino-compatible board.
+
+<Warning>
+  If pin 2 is left disconnected, the `isrWake` flag inside the library defaults to `true` and is never cleared by a real interrupt. In that state `tirqTouched()` always returns `true`, making the two-stage check functionally identical to — but no faster than — calling `touched()` directly every iteration.
+</Warning>
+
+### Default Pin Assignments
+
+| Signal | Arduino Pin |
+|--------|-------------|
+| CS (T_CS) | 8 |
+| MOSI | 11 |
+| MISO | 12 |
+| SCK | 13 |
+| TIRQ (**required**) | 2 |
+
+## Full Source Code
+
+```cpp
+#include <XPT2046_Touchscreen.h>
+#include <SPI.h>
+
+#define CS_PIN  8
+// MOSI=11, MISO=12, SCK=13
+
+// The TIRQ interrupt signal must be used for this example.
+#define TIRQ_PIN  2
+XPT2046_Touchscreen ts(CS_PIN, TIRQ_PIN);  // Param 2 - Touch IRQ Pin - interrupt enabled polling
+
+void setup() {
+  Serial.begin(38400);
+  ts.begin();
+  // ts.begin(SPI1); // use alternate SPI port
+  ts.setRotation(1);
+  while (!Serial && (millis() <= 1000));
+}
+
+void loop() {
+
+  // tirqTouched() is much faster than touched().  For projects where other SPI chips
+  // or other time sensitive tasks are added to loop(), using tirqTouched() can greatly
+  // reduce the delay added to loop() when the screen has not been touched.
+  if (ts.tirqTouched()) {
+    if (ts.touched()) {
+      TS_Point p = ts.getPoint();
+      Serial.print("Pressure = ");
+      Serial.print(p.z);
+      Serial.print(", x = ");
+      Serial.print(p.x);
+      Serial.print(", y = ");
+      Serial.print(p.y);
+      delay(30);
+      Serial.println();
+    }
+  }
+}
+```
+
+## Code Walkthrough
+
+<Steps>
+  <Step title="Constructor — Interrupt Pin Required">
+    Unlike the plain TouchTest example, this sketch does not offer a commented-out no-IRQ constructor. The TIRQ pin is mandatory:
+
+    ```cpp
+    #define TIRQ_PIN  2
+    XPT2046_Touchscreen ts(CS_PIN, TIRQ_PIN);
+    ```
+
+    Passing `TIRQ_PIN` to the constructor causes `begin()` to call `attachInterrupt()` on that pin. The ISR simply sets the `isrWake` volatile boolean to `true` on each falling edge, which happens the moment a finger contacts the screen.
+  </Step>
+
+  <Step title="Stage 1 — ts.tirqTouched()">
+    `tirqTouched()` reads the `isrWake` flag and returns its value. This is a plain memory read with **no SPI transaction**:
+
+    ```cpp
+    if (ts.tirqTouched()) {
+      // T_IRQ fired since the last check — a touch may be present
+    }
+    ```
+
+    Because `isrWake` is `volatile`, the compiler will not cache it in a register; every call reads the current value written by the ISR. The flag is cleared internally when `touched()` or `getPoint()` performs a real read.
+  </Step>
+
+  <Step title="Stage 2 — ts.touched()">
+    Once `tirqTouched()` confirms that the interrupt fired, `touched()` performs the SPI read and returns `true` only if the measured pressure value is ≥ 300:
+
+    ```cpp
+    if (ts.touched()) {
+      TS_Point p = ts.getPoint();
+      // print coordinates...
+    }
+    ```
+
+    If the T_IRQ signal was a transient glitch and no real pressure is detected, `touched()` returns `false` and `getPoint()` is never called — the SPI bus is released immediately.
+  </Step>
+
+  <Step title="Reading and Printing the Point">
+    Inside the guarded block the code is identical to the plain TouchTest example: `getPoint()` returns a `TS_Point` with `x`, `y`, and `z` members each in the 0–4095 range, and the 30 ms delay throttles serial output during a sustained press.
+
+    ```cpp
+    TS_Point p = ts.getPoint();
+    Serial.print("Pressure = ");
+    Serial.print(p.z);
+    Serial.print(", x = ");
+    Serial.print(p.x);
+    Serial.print(", y = ");
+    Serial.print(p.y);
+    delay(30);
+    Serial.println();
+    ```
+  </Step>
+</Steps>
+
+## Performance Advantage
+
+In a `loop()` that also drives an SD card, a display, a radio module, or any other time-sensitive task, the cost of a single SPI transaction to the XPT2046 is non-trivial — typically several microseconds of bus occupancy plus the overhead of `SPI.beginTransaction()` / `SPI.endTransaction()`. Multiplied across hundreds of `loop()` calls per second when nothing is being touched, this adds up.
+
+The two-stage pattern collapses that cost to a single boolean load on the vast majority of iterations:
+
+| Condition | tirqTouched() cost | touched() cost |
+|-----------|--------------------|----------------|
+| Screen idle | ~1 ns (flag read) | ~50–200 µs (SPI) |
+| Screen touched | ~1 ns (flag read) | ~50–200 µs (SPI) |
+
+When nothing is touching the screen, the inner `ts.touched()` call is skipped entirely, leaving the SPI bus free for other peripherals without any added latency.
+
+<Tip>
+  `tirqTouched()` is especially valuable on Teensy boards driving multiple SPI peripherals simultaneously (e.g., ILI9341 display + SD card + XPT2046 touch), and on ESP32 projects where `SPI.beginTransaction()` can carry additional RTOS scheduling overhead. Use it any time your `loop()` contains other work that should not be blocked by touchscreen polling.
+</Tip>
+
+<Note>
+  The `delay(30)` inside the touched block prevents the Serial Monitor from being flooded during a sustained press. It does **not** block `tirqTouched()` from firing on the next `loop()` iteration — if the user is still touching when the delay expires, `isrWake` will already be `true` again and the read will proceed immediately.
+</Note>

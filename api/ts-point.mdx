@@ -1,0 +1,186 @@
+---
+title: "TS_Point — Touch Coordinate Data Structure"
+sidebarTitle: "TS_Point"
+description: "TS_Point holds the x, y, and z touch coordinates returned by getPoint(). All fields are int16_t with values in the range 0–4095."
+---
+
+`TS_Point` is a lightweight data class returned by [`XPT2046_Touchscreen::getPoint()`](/api/xpt2046-touchscreen#getpoint). It bundles a touch position (`x`, `y`) and a pressure reading (`z`) into a single object, and provides equality and inequality operators so touch positions can be compared directly without inspecting individual fields.
+
+---
+
+## Header Declaration
+
+The complete class definition as it appears in `XPT2046_Touchscreen.h`:
+
+```cpp
+class TS_Point {
+public:
+  TS_Point(void) : x(0), y(0), z(0) {}
+  TS_Point(int16_t x, int16_t y, int16_t z) : x(x), y(y), z(z) {}
+  bool operator==(TS_Point p) { return ((p.x == x) && (p.y == y) && (p.z == z)); }
+  bool operator!=(TS_Point p) { return ((p.x != x) || (p.y != y) || (p.z != z)); }
+  int16_t x, y, z;
+};
+```
+
+---
+
+## Fields
+
+<ResponseField name="x" type="int16_t">
+  Horizontal touch position. Raw ADC output ranges from 0 to 4095; the exact value depends on the rotation mode set via `setRotation()`. After the rotation transform, 0 is the left edge and 4095 is the right edge for the default rotation (1).
+</ResponseField>
+
+<ResponseField name="y" type="int16_t">
+  Vertical touch position. Raw ADC output ranges from 0 to 4095; after the rotation transform, 0 is the top edge and 4095 is the bottom edge for the default rotation (1).
+</ResponseField>
+
+<ResponseField name="z" type="int16_t">
+  Touch pressure. `0` means the screen is not being touched (or pressure was below the internal `Z_THRESHOLD` of 300 and was zeroed out). Positive values of 300 or above indicate an active touch; higher values correspond to firmer finger pressure, up to a maximum of approximately 4095.
+</ResponseField>
+
+<Note>
+  Although `x`, `y`, and `z` are declared as `int16_t`, the XPT2046 ADC is 12-bit, so only the range 0–4095 is produced in normal operation. Negative values will not appear under normal use.
+</Note>
+
+---
+
+## Constructors
+
+### `TS_Point()` — Default Constructor
+
+Creates a `TS_Point` with all fields initialised to zero, equivalent to a no-touch state at the origin.
+
+```cpp
+TS_Point()
+```
+
+```cpp
+TS_Point p;           // x=0, y=0, z=0
+```
+
+---
+
+### `TS_Point(x, y, z)` — Value Constructor
+
+Creates a `TS_Point` with explicit coordinate and pressure values. Used internally by `getPoint()` to package the result of `update()`.
+
+```cpp
+TS_Point(int16_t x, int16_t y, int16_t z)
+```
+
+<ParamField path="x" type="int16_t" required>
+  Horizontal coordinate to store (0–4095).
+</ParamField>
+
+<ParamField path="y" type="int16_t" required>
+  Vertical coordinate to store (0–4095).
+</ParamField>
+
+<ParamField path="z" type="int16_t" required>
+  Pressure value to store. Typically 0 (no touch) or ≥ 300 (active touch).
+</ParamField>
+
+```cpp
+TS_Point p(512, 1024, 450);  // x=512, y=1024, z=450
+```
+
+---
+
+## Operators
+
+### `operator==`
+
+Returns `true` only if the `x`, `y`, **and** `z` fields of both points are equal. All three fields must match for the result to be `true`.
+
+```cpp
+bool operator==(TS_Point p)
+```
+
+<ResponseField name="return" type="bool">
+  `true` when `p.x == x && p.y == y && p.z == z`; `false` otherwise.
+</ResponseField>
+
+---
+
+### `operator!=`
+
+Returns `true` if **any** field differs between the two points. This is the logical complement of `operator==`.
+
+```cpp
+bool operator!=(TS_Point p)
+```
+
+<ResponseField name="return" type="bool">
+  `true` when `p.x != x || p.y != y || p.z != z`; `false` otherwise.
+</ResponseField>
+
+---
+
+## Usage Examples
+
+### Checking for a valid touch
+
+Always inspect `z` before treating `x` and `y` as a current touch position. When the screen is not pressed, `z` is `0` and `x`/`y` hold stale values from the last contact.
+
+```cpp
+TS_Point p = ts.getPoint();
+
+if (p.z > 300) {
+  Serial.print("Touch at x=");
+  Serial.print(p.x);
+  Serial.print(" y=");
+  Serial.println(p.y);
+}
+```
+
+---
+
+### Detecting position changes
+
+Because `TS_Point` implements `operator!=`, you can compare two points directly without checking each field manually:
+
+```cpp
+TS_Point prev;                 // default-constructed: x=0, y=0, z=0
+TS_Point curr = ts.getPoint();
+
+if (curr != prev) {
+  // touch position (or pressure) changed
+  Serial.print("Moved to x="); Serial.print(curr.x);
+  Serial.print(" y="); Serial.println(curr.y);
+  prev = curr;
+}
+```
+
+---
+
+### Storing and replaying touch events
+
+`TS_Point` is a plain value type with no heap allocations, making it safe to store in arrays or pass by value:
+
+```cpp
+const uint8_t MAX_POINTS = 16;
+TS_Point history[MAX_POINTS];
+uint8_t count = 0;
+
+void loop() {
+  if (ts.touched() && count < MAX_POINTS) {
+    history[count++] = ts.getPoint();
+  }
+}
+```
+
+---
+
+## Z Threshold Note
+
+The library defines `Z_THRESHOLD = 300` in `XPT2046_Touchscreen.cpp`. This constant is used in two places:
+
+- **`touched()`** — returns `true` only when the measured Z is ≥ 300.
+- **`update()`** — sets `zraw = 0` (and skips storing x/y) when Z drops below 300, so `getPoint()` returns `z = 0` for borderline readings.
+
+A secondary threshold `Z_THRESHOLD_INT = 75` controls when `isrWake` is cleared: the flag is reset only once Z falls below 75, providing hysteresis to prevent spurious re-arming during a slow finger lift-off.
+
+<Tip>
+  If you are reading `TS_Point` from `getPoint()` directly (rather than calling `touched()` first), use `p.z >= 300` as your touch-valid guard. Values between 1 and 299 will not appear in normal operation because `update()` zeros out `zraw` for sub-threshold readings.
+</Tip>

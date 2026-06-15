@@ -1,0 +1,211 @@
+---
+title: "ILI9341Test: Touch Coordinates Overlaid on TFT Display"
+sidebarTitle: "ILI9341Test"
+description: "Combines XPT2046_Touchscreen with ILI9341_t3 to display live touch coordinates on screen, demonstrating SPI bus sharing between touch and display."
+---
+
+The **ILI9341Test** example goes beyond printing to Serial — it renders live touch feedback directly onto a 320 × 240 ILI9341 TFT display using the [ILI9341_t3](https://github.com/PaulStoffregen/ILI9341_t3) library. When the screen is pressed, it clears to black, shows the word "Touch" in large yellow text, and continuously updates the raw X/Y coordinates below it in green. When you lift your finger, the display switches to a red "No Touch" message. This example is the definitive starting point for any Teensy project that needs to react to touch input and draw a UI response at the same time, because it shows exactly how to share a single SPI bus between two independent peripherals.
+
+## Hardware Required
+
+<CardGroup cols={2}>
+  <Card title="Teensy Board" icon="microchip">
+    Teensy 3.x, 4.x, or any board compatible with the `ILI9341_t3` library. The `ILI9341_t3` library is Teensy-specific; see the note below for adapting to other platforms.
+  </Card>
+  <Card title="Combined TFT + Touch Module" icon="display">
+    2.4″ or 2.8″ module with an ILI9341 display driver **and** an XPT2046 touch controller sharing the same PCB (very common on low-cost SPI TFT breakouts).
+  </Card>
+</CardGroup>
+
+### Pin Assignments
+
+| Signal | Arduino / Teensy Pin | Connected To |
+|--------|---------------------|--------------|
+| CS (T_CS) | **8** | XPT2046 chip select |
+| TFT_DC | **9** | ILI9341 data/command |
+| TFT_CS | **10** | ILI9341 chip select |
+| MOSI | **11** | Both ICs (shared) |
+| MISO | **12** | Both ICs (shared) |
+| SCK | **13** | Both ICs (shared) |
+| TIRQ | 2 (defined but unused in active constructor) | XPT2046 interrupt |
+
+### Library Dependencies
+
+This sketch requires two libraries beyond the built-in `SPI`:
+
+- **ILI9341_t3** — available in the Arduino Library Manager (search "ILI9341_t3") or via [Teensyduino](https://www.pjrc.com/teensy/teensyduino.html).
+- **font_Arial.h** — bundled with `ILI9341_t3`; no separate install needed.
+
+## Full Source Code
+
+```cpp
+#include <ILI9341_t3.h>
+#include <font_Arial.h> // from ILI9341_t3
+#include <XPT2046_Touchscreen.h>
+#include <SPI.h>
+
+#define CS_PIN  8
+#define TFT_DC  9
+#define TFT_CS 10
+// MOSI=11, MISO=12, SCK=13
+
+XPT2046_Touchscreen ts(CS_PIN);
+#define TIRQ_PIN  2
+//XPT2046_Touchscreen ts(CS_PIN);  // Param 2 - NULL - No interrupts
+//XPT2046_Touchscreen ts(CS_PIN, 255);  // Param 2 - 255 - No interrupts
+//XPT2046_Touchscreen ts(CS_PIN, TIRQ_PIN);  // Param 2 - Touch IRQ Pin - interrupt enabled polling
+
+ILI9341_t3 tft = ILI9341_t3(TFT_CS, TFT_DC);
+
+void setup() {
+  Serial.begin(38400);
+  tft.begin();
+  tft.setRotation(1);
+  tft.fillScreen(ILI9341_BLACK);
+  ts.begin();
+  ts.setRotation(1);
+  while (!Serial && (millis() <= 1000));
+}
+
+boolean wastouched = true;
+
+void loop() {
+  boolean istouched = ts.touched();
+  if (istouched) {
+    TS_Point p = ts.getPoint();
+    if (!wastouched) {
+      tft.fillScreen(ILI9341_BLACK);
+      tft.setTextColor(ILI9341_YELLOW);
+      tft.setFont(Arial_60);
+      tft.setCursor(60, 80);
+      tft.print("Touch");
+    }
+    tft.fillRect(100, 150, 140, 60, ILI9341_BLACK);
+    tft.setTextColor(ILI9341_GREEN);
+    tft.setFont(Arial_24);
+    tft.setCursor(100, 150);
+    tft.print("X = ");
+    tft.print(p.x);
+    tft.setCursor(100, 180);
+    tft.print("Y = ");
+    tft.print(p.y);
+    Serial.print(", x = ");
+    Serial.print(p.x);
+    Serial.print(", y = ");
+    Serial.println(p.y);
+  } else {
+    if (wastouched) {
+      tft.fillScreen(ILI9341_BLACK);
+      tft.setTextColor(ILI9341_RED);
+      tft.setFont(Arial_48);
+      tft.setCursor(120, 50);
+      tft.print("No");
+      tft.setCursor(80, 120);
+      tft.print("Touch");
+    }
+    Serial.println("no touch");
+  }
+  wastouched = istouched;
+  delay(100);
+}
+```
+
+## SPI Bus Sharing
+
+Both `XPT2046_Touchscreen` and `ILI9341_t3` communicate over the same four-wire SPI bus (MOSI, MISO, SCK, and a shared ground), but each device has its own dedicated chip-select line — **pin 8** for the XPT2046 and **pin 10** for the ILI9341. Only the device whose CS is pulled low can drive or read the bus at any given moment.
+
+The XPT2046 library uses `SPI.beginTransaction()` / `SPI.endTransaction()` around every read, which correctly holds the bus for the duration of the transaction and then releases it. ILI9341_t3 does the same. As long as both drivers follow this protocol — and they do — there is no bus contention, no special arbitration layer, and no need for software locking.
+
+## Loop Logic Walkthrough
+
+<Steps>
+  <Step title="Sample the Touch State">
+    At the top of every `loop()` iteration the current touch state is captured into a local boolean:
+
+    ```cpp
+    boolean istouched = ts.touched();
+    ```
+
+    Comparing `istouched` with the previous value (`wastouched`) lets the sketch distinguish three distinct events: **first touch** (was false, now true), **continuing touch** (both true), and **release** (was true, now false). This state-machine approach avoids redrawing the entire screen on every iteration.
+  </Step>
+
+  <Step title="First Touch — Draw 'Touch' Banner">
+    When `istouched` is `true` and `wastouched` is `false`, the screen is cleared and the word "Touch" is drawn once in large yellow text (Arial 60):
+
+    ```cpp
+    if (!wastouched) {
+      tft.fillScreen(ILI9341_BLACK);
+      tft.setTextColor(ILI9341_YELLOW);
+      tft.setFont(Arial_60);
+      tft.setCursor(60, 80);
+      tft.print("Touch");
+    }
+    ```
+
+    This block runs exactly once per touch gesture — subsequent iterations skip it because `wastouched` will already be `true`.
+  </Step>
+
+  <Step title="Continuing Touch — Update Coordinates">
+    On every touched iteration (first touch and all subsequent ones), a 140 × 60 pixel rectangle at (100, 150) is cleared and the current X/Y values are written in green Arial 24:
+
+    ```cpp
+    tft.fillRect(100, 150, 140, 60, ILI9341_BLACK);
+    tft.setTextColor(ILI9341_GREEN);
+    tft.setFont(Arial_24);
+    tft.setCursor(100, 150);
+    tft.print("X = ");
+    tft.print(p.x);
+    tft.setCursor(100, 180);
+    tft.print("Y = ");
+    tft.print(p.y);
+    ```
+
+    Erasing only the coordinate area (not the full screen) eliminates the visible flash that a full `fillScreen()` on every iteration would cause.
+  </Step>
+
+  <Step title="Release — Draw 'No Touch' Message">
+    When `istouched` is `false` and `wastouched` is `true`, the screen clears and a two-line "No Touch" message is drawn in red:
+
+    ```cpp
+    if (wastouched) {
+      tft.fillScreen(ILI9341_BLACK);
+      tft.setTextColor(ILI9341_RED);
+      tft.setFont(Arial_48);
+      tft.setCursor(120, 50);
+      tft.print("No");
+      tft.setCursor(80, 120);
+      tft.print("Touch");
+    }
+    ```
+
+    Again, the guard (`if (wastouched)`) ensures the screen is only redrawn on the **first** untouched iteration.
+  </Step>
+
+  <Step title="State Update and Delay">
+    At the bottom of the loop, `wastouched` is updated for the next iteration and a 100 ms delay throttles the refresh rate:
+
+    ```cpp
+    wastouched = istouched;
+    delay(100);
+    ```
+
+    At 100 ms per cycle the display updates at up to 10 frames per second, which is smooth enough for coordinate readout while remaining well within the SPI bandwidth available.
+  </Step>
+</Steps>
+
+<Note>
+  This example requires the `ILI9341_t3` library, which is Teensy-specific. If you are using an Arduino Uno, Mega, or ESP32, substitute `Adafruit_ILI9341` and update the constructor:
+
+  ```cpp
+  // Replace:
+  ILI9341_t3 tft = ILI9341_t3(TFT_CS, TFT_DC);
+  // With:
+  Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
+  ```
+
+  The rest of the sketch is compatible without further changes, since `Adafruit_ILI9341` exposes the same drawing API. The `font_Arial.h` include and `Arial_60`/`Arial_48`/`Arial_24` font constants are ILI9341_t3-specific, however — replace those with `tft.setTextSize(n)` calls when using the Adafruit library.
+</Note>
+
+<Tip>
+  Both `tft.setRotation(1)` and `ts.setRotation(1)` are called with the **same value** in `setup()`. This is essential: the display and the touch controller each have their own independent coordinate system, and they must both be rotated identically for a touch at a given screen position to produce X/Y values that map to that position. If you change the rotation, update **both** calls together.
+</Tip>

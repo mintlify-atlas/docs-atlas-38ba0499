@@ -1,0 +1,72 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "XPT2046 Touchscreen",
+  "projectDescription": "An Arduino library for the XPT2046 resistive touchscreen controller chip found on many low-cost TFT displays, providing SPI-based touch detection, coordinate reading, and interrupt support.",
+  "theme": "palm",
+  "primaryColor": "#2563EB",
+  "lightColor": "#DBEAFE",
+  "darkColor": "#1E3A5F",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Get Started",
+        "pages": [
+          "introduction",
+          "installation",
+          "quickstart"
+        ]
+      },
+      {
+        "group": "Guides",
+        "pages": [
+          "guides/wiring",
+          "guides/interrupt-pin",
+          "guides/rotation",
+          "guides/adafruit-compatibility"
+        ]
+      },
+      {
+        "group": "API Reference",
+        "pages": [
+          "api/xpt2046-touchscreen",
+          "api/ts-point"
+        ]
+      },
+      {
+        "group": "Examples",
+        "pages": [
+          "examples/touch-test",
+          "examples/touch-test-irq",
+          "examples/ili9341-test"
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "SPI-based communication with XPT2046 touch controller at 2 MHz",
+    "Touch detection via touched() and tirqTouched() methods",
+    "Coordinate reading via getPoint() (returns TS_Point) and readData()",
+    "Optional interrupt pin (T_IRQ) support for efficient polling without SPI calls when not touched",
+    "Configurable screen rotation (0–3) to match TFT display orientation",
+    "Pressure (Z-axis) measurement for touch intensity",
+    "Noise filtering using best-two-of-three averaging algorithm",
+    "Support for alternate SPI ports (e.g., SPI1) and Teensy FlexIO SPI",
+    "Compatible with Adafruit_STMPE610 library API",
+    "Works on Arduino, Teensy, ESP8266, ESP32, and other Arduino-compatible boards"
+  ],
+  "publicApiSurface": [
+    "XPT2046_Touchscreen(uint8_t cspin, uint8_t tirq=255) — constructor",
+    "bool begin(SPIClass &wspi = SPI) — initialize with optional SPI port",
+    "bool begin(FlexIOSPI &wflexspi) — initialize with FlexIO SPI (Teensy)",
+    "bool touched() — returns true if screen is currently touched",
+    "bool tirqTouched() — fast IRQ-based touch check without SPI",
+    "TS_Point getPoint() — returns TS_Point with x, y, z coordinates",
+    "void readData(uint16_t *x, uint16_t *y, uint8_t *z) — reads coordinates into pointers",
+    "void setRotation(uint8_t n) — sets rotation 0–3",
+    "bool bufferEmpty() — returns true if recent data is stale",
+    "uint8_t bufferSize() — returns internal buffer size (always 1)",
+    "TS_Point.x — touch X coordinate (0–4095)",
+    "TS_Point.y — touch Y coordinate (0–4095)",
+    "TS_Point.z — touch pressure (0–4095)"
+  ]
+}

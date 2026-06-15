@@ -1,0 +1,295 @@
+---
+title: "XPT2046_Touchscreen Class — Full API Reference"
+sidebarTitle: "XPT2046_Touchscreen"
+description: "Complete reference for the XPT2046_Touchscreen class: constructor, begin, touched, tirqTouched, getPoint, readData, setRotation, bufferEmpty, and bufferSize."
+---
+
+`XPT2046_Touchscreen` is the main driver class for the XPT2046 resistive touch controller. It manages SPI communication with the chip, applies best-two-of-three noise filtering across three consecutive X/Y samples, handles optional interrupt-driven wake detection through the T_IRQ pin, and exposes touch coordinates through a consistent interface compatible with the Adafruit_STMPE610 library.
+
+---
+
+## Constructor
+
+### `XPT2046_Touchscreen(cspin, tirq)`
+
+Creates an instance of the driver. No hardware communication takes place at construction time — the SPI bus and pin modes are configured later in `begin()`.
+
+```cpp
+constexpr XPT2046_Touchscreen(uint8_t cspin, uint8_t tirq = 255)
+```
+
+<ParamField path="cspin" type="uint8_t" required>
+  The digital pin number connected to **T_CS** (chip select) on the display module. This pin is driven LOW during every SPI transaction and held HIGH otherwise.
+</ParamField>
+
+<ParamField path="tirq" type="uint8_t" default="255">
+  The digital pin number connected to **T_IRQ** on the display module. When specified, the library attaches an internal ISR that sets `isrWake = true` on every falling edge, allowing `update()` to skip SPI reads entirely when no touch has been detected. Pass `255` (the default) to disable interrupt support.
+</ParamField>
+
+```cpp
+XPT2046_Touchscreen ts(8);        // CS on pin 8, no interrupt pin
+XPT2046_Touchscreen ts(8, 255);   // explicit: no interrupt pin
+XPT2046_Touchscreen ts(8, 2);     // CS=8, T_IRQ=2
+```
+
+<Note>
+  The constructor is marked `constexpr`, so instances can be placed in global scope and zero-initialized at compile time — no constructor overhead at startup.
+</Note>
+
+---
+
+## Initialization
+
+### `begin()`
+
+Initializes the SPI bus, configures the CS pin as `OUTPUT` and drives it `HIGH`, and — if `tirqPin != 255` — sets the interrupt pin as `INPUT` and attaches an internal falling-edge ISR. Call this once inside `setup()` before any other library method.
+
+```cpp
+bool begin(SPIClass &wspi = SPI)
+```
+
+<ParamField path="wspi" type="SPIClass &" default="SPI">
+  The SPI peripheral to use. Defaults to the primary hardware `SPI` bus. Pass `SPI1`, `SPI2`, or any other `SPIClass` instance to communicate over an alternate port.
+</ParamField>
+
+<ResponseField name="return" type="bool">
+  Always returns `true`. The return value exists for API symmetry; there is no failure path in the current implementation.
+</ResponseField>
+
+```cpp
+// In setup():
+ts.begin();        // use the default SPI bus
+ts.begin(SPI1);    // use an alternate SPI port
+```
+
+<Note>
+  **Teensy FlexIO variant:** On Teensy boards with FlexIO support (`__IMXRT1062__`) and the `FlexIOSPI.h` header available, an overloaded form `bool begin(FlexIOSPI &wflexspi)` is compiled in. It initialises the FlexIO SPI peripheral instead of a standard `SPIClass`. Usage and return value are identical.
+
+  ```cpp
+  FlexIOSPI flexSPI(/* pins */);
+  ts.begin(flexSPI);
+  ```
+</Note>
+
+---
+
+## Reading Touch State
+
+### `touched()`
+
+Triggers an SPI read of the touch controller and returns whether the screen is actively being pressed. Internally calls `update()`, which reads Z pressure and up to three pairs of X/Y coordinates, then applies `besttwoavg` filtering to select the closest-matching pair. Returns `true` when the computed Z value is ≥ `Z_THRESHOLD` (300).
+
+```cpp
+bool touched()
+```
+
+<ResponseField name="return" type="bool">
+  `true` if the measured Z pressure is 300 or above; `false` otherwise.
+</ResponseField>
+
+```cpp
+if (ts.touched()) {
+  TS_Point p = ts.getPoint();
+  Serial.print("x="); Serial.print(p.x);
+  Serial.print(" y="); Serial.println(p.y);
+}
+```
+
+<Tip>
+  `touched()` is rate-limited: if called within 3 ms of the previous successful read, `update()` returns immediately and serves the cached result. This prevents hammering the SPI bus when polled in a tight loop.
+</Tip>
+
+---
+
+### `tirqTouched()`
+
+Checks the internal `isrWake` flag that the T_IRQ interrupt handler sets on every falling edge. **No SPI communication occurs.** This makes it substantially cheaper than `touched()` and safe to call at any frequency.
+
+```cpp
+bool tirqTouched()
+```
+
+<ResponseField name="return" type="bool">
+  `true` if a falling edge has been recorded on T_IRQ since the flag was last cleared; `false` otherwise. The flag is cleared automatically inside `update()` once a low-pressure (below `Z_THRESHOLD_INT` = 75) reading is confirmed.
+</ResponseField>
+
+```cpp
+void loop() {
+  if (ts.tirqTouched()) {   // cheap pre-check — no SPI
+    if (ts.touched()) {     // now do the real SPI read
+      TS_Point p = ts.getPoint();
+      handleTouch(p);
+    }
+  }
+}
+```
+
+<Warning>
+  `tirqTouched()` is only meaningful when a `tirqPin` was provided to the constructor. If `tirqPin` is `255`, `isrWake` is initialised to `true` and never cleared, so `tirqTouched()` will always return `true`.
+</Warning>
+
+---
+
+### `getPoint()`
+
+Triggers `update()` and returns the latest touch coordinates and pressure as a [`TS_Point`](/api/ts-point) object. If the screen is not touched, z will be `0`; x and y retain their last valid values.
+
+```cpp
+TS_Point getPoint()
+```
+
+<ResponseField name="return" type="TS_Point">
+  A `TS_Point` struct with fields `x` (0–4095), `y` (0–4095), and `z` (pressure, 0 or ≥ 300 when touched). See the [TS_Point reference](/api/ts-point) for full field descriptions.
+</ResponseField>
+
+```cpp
+TS_Point p = ts.getPoint();
+Serial.print("x="); Serial.print(p.x);
+Serial.print(", y="); Serial.print(p.y);
+Serial.print(", z="); Serial.println(p.z);
+```
+
+<Tip>
+  Always check `p.z >= 300` (or call `touched()` first) before treating the x/y values as a current touch position. When z is 0 the chip is not being pressed and x/y are stale from the previous contact.
+</Tip>
+
+---
+
+### `readData(x, y, z)`
+
+Alternative coordinate-reading interface. Triggers `update()` and writes the current x, y, and z values into the caller-supplied pointers. Functionally equivalent to `getPoint()` but avoids constructing a `TS_Point` object when individual variables are more convenient.
+
+```cpp
+void readData(uint16_t *x, uint16_t *y, uint8_t *z)
+```
+
+<ParamField path="x" type="uint16_t *" required>
+  Pointer to a `uint16_t` that receives the horizontal touch coordinate (0–4095 after rotation transform).
+</ParamField>
+
+<ParamField path="y" type="uint16_t *" required>
+  Pointer to a `uint16_t` that receives the vertical touch coordinate (0–4095 after rotation transform).
+</ParamField>
+
+<ParamField path="z" type="uint8_t *" required>
+  Pointer to a `uint8_t` that receives the Z pressure value. Note the narrower type: pressure is truncated to 8 bits here, whereas `TS_Point::z` is `int16_t`.
+</ParamField>
+
+```cpp
+uint16_t x, y;
+uint8_t z;
+ts.readData(&x, &y, &z);
+
+if (z > 0) {
+  Serial.print("Touch at x="); Serial.print(x);
+  Serial.print(" y="); Serial.println(y);
+}
+```
+
+---
+
+## Configuration
+
+### `setRotation(n)`
+
+Sets the coordinate-system rotation so that touch coordinates align with the pixel coordinate system of the TFT display driver. The rotation value is stored modulo 4 internally, so passing any integer is safe.
+
+```cpp
+void setRotation(uint8_t n)
+```
+
+<ParamField path="n" type="uint8_t" required>
+  Rotation index, interpreted modulo 4. Must match the rotation value passed to the TFT display driver (e.g. `ILI9341_t3::setRotation()` or `Adafruit_ILI9341::setRotation()`).
+
+  | Value | Transform applied to raw X/Y |
+  |-------|-------------------------------|
+  | `0`   | `xraw = 4095 − y`, `yraw = x` |
+  | `1`   | `xraw = x`, `yraw = y` *(default)* |
+  | `2`   | `xraw = y`, `yraw = 4095 − x` |
+  | `3`   | `xraw = 4095 − x`, `yraw = 4095 − y` |
+</ParamField>
+
+```cpp
+void setup() {
+  tft.begin();
+  tft.setRotation(2);   // set display rotation
+
+  ts.begin();
+  ts.setRotation(2);    // match touch rotation to display
+}
+```
+
+<Warning>
+  The default rotation after construction is **1**, not 0. Always call `setRotation()` explicitly in `setup()` if your display is oriented differently.
+</Warning>
+
+---
+
+## Compatibility Helpers
+
+These methods exist to make `XPT2046_Touchscreen` a drop-in replacement for `Adafruit_STMPE610`, which has a hardware FIFO buffer. The XPT2046 has no such buffer; these methods simulate the interface with constant values.
+
+### `bufferEmpty()`
+
+Returns `true` if the last successful SPI read was completed more than 3 ms ago (`MSEC_THRESHOLD`). Mirrors the Adafruit_STMPE610 method of the same name, which reports whether the chip's FIFO is empty.
+
+```cpp
+bool bufferEmpty()
+```
+
+<ResponseField name="return" type="bool">
+  `true` when `millis() − msraw < MSEC_THRESHOLD` (i.e. a read happened recently and new data is available); `false` otherwise.
+</ResponseField>
+
+```cpp
+// Adafruit_STMPE610-compatible polling loop
+while (!ts.bufferEmpty()) {
+  uint16_t x, y;
+  uint8_t z;
+  ts.readData(&x, &y, &z);
+}
+```
+
+---
+
+### `bufferSize()`
+
+Always returns `1`. The STMPE610 has a 128-entry FIFO; this stub reports a buffer depth of one entry for compatibility.
+
+```cpp
+uint8_t bufferSize()
+```
+
+<ResponseField name="return" type="uint8_t">
+  Always `1`.
+</ResponseField>
+
+```cpp
+uint8_t depth = ts.bufferSize(); // always 1
+```
+
+---
+
+## Advanced: `isrWake`
+
+```cpp
+volatile bool isrWake
+```
+
+A public `volatile bool` that the internal ISR sets to `true` on every falling edge of T_IRQ, and that `update()` clears to `false` after a confirmed no-touch reading. It is exposed as public (rather than protected) to support advanced deep-sleep wakeup patterns described in the README.
+
+```cpp
+// Deep-sleep wakeup pattern (pseudocode)
+ts.isrWake = false;                       // clear before sleeping
+attachInterrupt(TIRQ_PIN, wakeISR, FALLING);
+enterDeepSleep();                          // processor sleeps here
+// ... woken by T_IRQ falling edge ...
+detachInterrupt(TIRQ_PIN);
+if (ts.tirqTouched()) {                    // isrWake is true again
+  TS_Point p = ts.getPoint();
+}
+```
+
+<Warning>
+  Manually writing `isrWake` while the interrupt is attached can cause race conditions. Disable the interrupt or use an atomic block before modifying this flag directly.
+</Warning>

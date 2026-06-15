@@ -1,0 +1,69 @@
+---
+title: "XPT2046 Touchscreen: Arduino Library for Resistive Touch"
+sidebarTitle: "Introduction"
+description: "XPT2046_Touchscreen is an Arduino library for reading touch coordinates and pressure from TFT displays using the XPT2046 controller chip over SPI."
+---
+
+The XPT2046_Touchscreen library gives any Arduino-compatible board a clean, high-level interface to resistive touch displays built around the XPT2046 controller chip. With just a few lines of code you can detect touches, read calibrated X/Y coordinates, and measure applied pressure — all over a standard SPI bus.
+
+## What is the XPT2046?
+
+The XPT2046 is a 12-bit analog-to-digital converter purpose-built for four-wire resistive touchscreens. It handles the analog signal acquisition, conversion, and pressure measurement entirely on-chip, then delivers results over a simple SPI interface. The chip is found on a huge number of low-cost color TFT display modules — if your display has a touch layer and uses the `T_CS`, `T_CLK`, `T_DIN`, `T_DO`, and `T_IRQ` pins, it almost certainly has an XPT2046 (or its close sibling the ADS7843) under the hood.
+
+## What the Library Does
+
+The library manages all SPI communication with the XPT2046 so your sketch never needs to bit-bang registers directly. Key capabilities include:
+
+- **Touch detection** — `touched()` returns `true` the moment a finger is on the screen, using a built-in pressure threshold of 300 (out of 4095) to filter noise.
+- **Coordinate reading** — `getPoint()` returns a `TS_Point` struct with 12-bit `x`, `y`, and `z` (pressure) fields, each ranging from 0 to 4095.
+- **Raw data access** — `readData(uint16_t *x, uint16_t *y, uint8_t *z)` writes the same values into caller-supplied pointers.
+- **Rotation** — `setRotation(n)` accepts values 0–3 and rotates the coordinate frame to match any display orientation, using the same numbering as Adafruit and ILI9341_t3 TFT libraries.
+- **Interrupt pin support** — pass a `TIRQ_PIN` to the constructor and the library attaches a hardware interrupt internally. Subsequent calls to `touched()` and `getPoint()` skip the SPI bus entirely when no touch has occurred, keeping your MCU's SPI lines idle and preventing the Teensy's LED from flickering on every poll.
+- **Alternate SPI ports** — `begin(SPI1)` (or any `SPIClass` instance) lets you use a non-default hardware SPI peripheral.
+- **FlexIO SPI** — on Teensy 4.x, `begin(FlexIOSPI)` is supported when the `FlexIOSPI` library is present.
+
+## Adafruit_STMPE610 Compatibility
+
+XPT2046_Touchscreen is a drop-in replacement for Adafruit's `Adafruit_STMPE610` touchscreen library. The function names, parameter types, and numeric ranges are intentionally identical, so any sketch or library written for Adafruit's resistive-touch API works without modification.
+
+## Supported Platforms
+
+The library targets **all Arduino-compatible architectures** (`architectures=*`). It has been tested extensively on:
+
+| Platform | Notes |
+|---|---|
+| Arduino Uno / Mega / Leonardo | Hardware SPI on pins 11 (MOSI), 12 (MISO), 13 (SCK) |
+| Teensy 3.x / 4.x | Full support including FlexIO SPI on Teensy 4.x |
+| ESP8266 | ISR placed in IRAM via `ICACHE_RAM_ATTR` automatically |
+| ESP32 | ISR placed in IRAM via `IRAM_ATTR` automatically |
+| Any Arduino-compatible board | As long as the Arduino SPI library is available |
+
+## Library Facts
+
+| Property | Value |
+|---|---|
+| Version | 1.4 |
+| Author | Paul Stoffregen |
+| Category | Display |
+| Architectures | `*` (all) |
+| License | MIT |
+| Repository | [github.com/PaulStoffregen/XPT2046_Touchscreen](https://github.com/PaulStoffregen/XPT2046_Touchscreen) |
+| Arduino IDE minimum | 1.6.0 |
+
+<Note>
+The MIT license allows free use, modification, and redistribution in both personal and commercial projects. The copyright notice and permission notice must be retained in all copies or substantial portions of the software.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install the library via Arduino Library Manager, PlatformIO, or manual ZIP download.
+  </Card>
+  <Card title="Quickstart" icon="bolt" href="/quickstart">
+    Wire up your display and read your first touch coordinates in under 5 minutes.
+  </Card>
+  <Card title="Wiring Guide" icon="cable-car" href="/guides/wiring">
+    Pin-by-pin wiring diagrams for Arduino Uno, Teensy, ESP8266, and ESP32.
+  </Card>
+</CardGroup>

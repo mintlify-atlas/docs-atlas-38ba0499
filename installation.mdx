@@ -1,0 +1,106 @@
+---
+title: "Install XPT2046 Touchscreen Library for Arduino"
+sidebarTitle: "Installation"
+description: "Install the XPT2046_Touchscreen library using the Arduino Library Manager, PlatformIO, or manual ZIP download. Requires Arduino 1.6.0 or later."
+---
+
+XPT2046_Touchscreen can be installed through the Arduino IDE's built-in Library Manager, PlatformIO's dependency system, or by manually importing a ZIP archive from GitHub. All three methods result in an identical installation — choose whichever fits your workflow.
+
+<Warning>
+Arduino IDE **1.6.0 or later** is required. The library header enforces this with a compile-time `#error` and will refuse to compile on older IDE versions that ship an incompatible SPI library.
+</Warning>
+
+## Choose Your Method
+
+<Tabs>
+  <Tab title="Arduino IDE">
+    The Library Manager is the easiest way to install and keep the library up to date inside the Arduino IDE.
+
+    <Steps>
+      <Step title="Open the Library Manager">
+        In the Arduino IDE, go to **Sketch → Include Library → Manage Libraries…** (or press `Ctrl+Shift+I` / `⌘+Shift+I`). The Library Manager panel will open and index available libraries.
+      </Step>
+      <Step title="Search for the library">
+        Type `XPT2046_Touchscreen` into the search box. The library by **Paul Stoffregen** will appear in the results.
+      </Step>
+      <Step title="Install">
+        Select the latest version from the drop-down (1.4 at time of writing) and click **Install**. The IDE downloads and unpacks the library into your Arduino `libraries/` folder automatically.
+      </Step>
+      <Step title="Verify">
+        After installation, go to **File → Examples → XPT2046_Touchscreen** and confirm that the `TouchTest` example appears in the menu.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="PlatformIO">
+    PlatformIO resolves and downloads the library automatically from its registry when you declare it as a dependency in your project configuration.
+
+    <Steps>
+      <Step title="Open platformio.ini">
+        Open the `platformio.ini` file at the root of your PlatformIO project. If you are starting fresh, create a new project in PlatformIO IDE or with `pio project init`.
+      </Step>
+      <Step title="Add the library to lib_deps">
+        Add `paulstoffregen/XPT2046_Touchscreen` to the `lib_deps` key for your environment:
+
+        ```ini
+        [env:uno]
+        platform = atmelavr
+        board = uno
+        framework = arduino
+        lib_deps =
+            paulstoffregen/XPT2046_Touchscreen
+        ```
+
+        For a Teensy 4.1 project the environment would look like:
+
+        ```ini
+        [env:teensy41]
+        platform = teensy
+        board = teensy41
+        framework = arduino
+        lib_deps =
+            paulstoffregen/XPT2046_Touchscreen
+        ```
+      </Step>
+      <Step title="Build the project">
+        Run **Build** (the checkmark icon) or execute `pio run` in the terminal. PlatformIO downloads the library and its dependencies into the project's `.pio/libdeps/` directory on the first build.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="Manual ZIP">
+    Use this method if you are working offline or need a specific commit that is not yet published to the registry.
+
+    <Steps>
+      <Step title="Download the ZIP">
+        Visit the GitHub repository at [github.com/PaulStoffregen/XPT2046_Touchscreen](https://github.com/PaulStoffregen/XPT2046_Touchscreen) and click **Code → Download ZIP**. Save the file to a convenient location.
+      </Step>
+      <Step title="Import into the Arduino IDE">
+        In the Arduino IDE, go to **Sketch → Include Library → Add .ZIP Library…**, browse to the downloaded ZIP file, and click **Open**. The IDE will extract the archive into your `libraries/` folder.
+      </Step>
+      <Step title="Restart the IDE">
+        Close and reopen the Arduino IDE so it rescans the `libraries/` folder and picks up the new entry in the Examples menu.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## Dependencies
+
+| Dependency | Required? | Notes |
+|---|---|---|
+| Arduino `SPI` library | **Yes** | Bundled with every Arduino IDE and PlatformIO Arduino framework installation — no separate install needed. |
+| `FlexIOSPI` | Only on Teensy 4.x with FlexIO | Optional. The library auto-detects its presence via `#if __has_include(<FlexIOSPI.h>)` and enables FlexIO support only when the header is found. |
+
+<Note>
+No other third-party libraries are required. The XPT2046_Touchscreen library deliberately avoids Adafruit GFX or any display driver dependency so it can be used independently of whichever TFT rendering library you choose.
+</Note>
+
+## Including the Library in Your Sketch
+
+Once installed, add these two includes at the top of every sketch that uses the touchscreen:
+
+```cpp
+#include <SPI.h>
+#include <XPT2046_Touchscreen.h>
+```
+
+`SPI.h` must be included **before** `XPT2046_Touchscreen.h` so that the SPI types are defined when the touchscreen header is processed. The Arduino IDE typically handles include ordering automatically when you use **Sketch → Include Library**, but it is good practice to list `SPI.h` first.
