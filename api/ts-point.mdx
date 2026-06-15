@@ -1,7 +1,7 @@
 ---
-title: "TS_Point — Touch Coordinate Data Structure"
+title: "TS_Point Data Structure — XPT2046 Touchscreen API"
 sidebarTitle: "TS_Point"
-description: "TS_Point holds the x, y, and z touch coordinates returned by getPoint(). All fields are int16_t with values in the range 0–4095."
+description: "Reference for TS_Point, the touch coordinate struct returned by XPT2046_Touchscreen::getPoint(). Covers x, y, z fields, constructors, and operators."
 ---
 
 `TS_Point` is a lightweight data class returned by [`XPT2046_Touchscreen::getPoint()`](/api/xpt2046-touchscreen#getpoint). It bundles a touch position (`x`, `y`) and a pressure reading (`z`) into a single object, and provides equality and inequality operators so touch positions can be compared directly without inspecting individual fields.

@@ -1,5 +1,5 @@
 ---
-title: "Using the T_IRQ Interrupt Pin with XPT2046"
+title: "XPT2046 T_IRQ Pin: Interrupt-Driven Touch Detection"
 sidebarTitle: "Interrupt Pin"
 description: "Connect T_IRQ to an interrupt-capable pin and use tirqTouched() to skip SPI reads when the screen is idle, reducing loop() overhead significantly."
 ---
@@ -36,7 +36,9 @@ When `T_IRQ` is wired to an interrupt-capable GPIO and passed to the constructor
           Serial.print(", x = ");
           Serial.print(p.x);
           Serial.print(", y = ");
-          Serial.println(p.y);
+          Serial.print(p.y);
+          delay(30);
+          Serial.println();
         }
       }
     }
@@ -105,5 +107,5 @@ void resumeAfterSleep() {
 ```
 
 <Tip>
-On Teensy and ESP32 platforms, the library's ISR is placed in fast RAM automatically via the `ISR_PREFIX` macro (`IRAM_ATTR` on ESP32, `ICACHE_RAM_ATTR` on ESP8266), so wakeup latency is minimal.
+On ESP32 and ESP8266 platforms, the library's ISR is placed in fast RAM automatically via the `ISR_PREFIX` macro (`IRAM_ATTR` on ESP32, `ICACHE_RAM_ATTR` on ESP8266), so wakeup latency is minimal.
 </Tip>

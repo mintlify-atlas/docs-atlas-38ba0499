@@ -1,14 +1,14 @@
 ---
 title: "Setting Touch Screen Rotation to Match Your Display"
 sidebarTitle: "Rotation"
-description: "Use setRotation(0–3) to align XPT2046 touch coordinates with your TFT display orientation. Matches the rotation modes used in ILI9341_t3 and Adafruit libraries."
+description: "Use setRotation(0–3) to align XPT2046 touch coordinates with your TFT display. Matches rotation modes used by ILI9341_t3 and Adafruit display libraries."
 ---
 
 The XPT2046 reports raw 12-bit ADC values for the X and Y axes. These raw values do not automatically correspond to pixel coordinates on your screen — their mapping depends on how the touchscreen overlay is oriented relative to the display. `setRotation(n)` remaps the raw values so that the touch coordinates align with the pixel coordinates produced by your TFT display library.
 
 ## Rotation Values
 
-Pass a value from `0` to `3` to `setRotation()`. The default after calling `begin()` is `1`. Each value applies a 90-degree step and an optional axis inversion, matching the rotation convention used by `ILI9341_t3` and the Adafruit display libraries.
+Pass a value from `0` to `3` to `setRotation()`. The default is `1`, set at the class level before `begin()` is called. Each value applies a 90-degree step and an optional axis inversion, matching the rotation convention used by `ILI9341_t3` and the Adafruit display libraries.
 
 | Value | Reported x | Reported y | Orientation |
 |---|---|---|---|

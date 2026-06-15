@@ -1,7 +1,7 @@
 ---
 title: "Get Started with XPT2046 Touchscreen in 5 Minutes"
 sidebarTitle: "Quickstart"
-description: "Wire up an XPT2046 touch display, include the library, initialize over SPI, and read live touch coordinates in under 5 minutes."
+description: "Wire up an XPT2046 touch display, include the library, initialize over SPI, and read your first live touch coordinates in under five minutes."
 ---
 
 This guide walks you through everything needed to detect a touch and print live X, Y, and pressure coordinates to the Serial Monitor. From a fresh install to your first working output takes fewer than five minutes.
@@ -82,14 +82,14 @@ Before starting, make sure you have the following:
         Serial.print(p.x);
         Serial.print(", y = ");
         Serial.print(p.y);
-        Serial.println();
         delay(30);
+        Serial.println();
       }
     }
     ```
 
     - `p.x` and `p.y` are 12-bit values in the range **0–4095**.
-    - `p.z` is a 12-bit pressure value in the range **0–4095**. `touched()` returns `true` only when `p.z` is at or above the internal threshold of **300**, which reliably filters light contact noise.
+    - `p.z` is a 12-bit pressure value (`int16_t`) in the range **0–4095**. `touched()` returns `true` only when `p.z` is at or above the internal threshold of **300**, which reliably filters light contact noise.
   </Step>
 </Steps>
 
@@ -125,8 +125,8 @@ void loop() {
     Serial.print(p.x);
     Serial.print(", y = ");
     Serial.print(p.y);
-    Serial.println();
     delay(30);
+    Serial.println();
   }
 }
 ```

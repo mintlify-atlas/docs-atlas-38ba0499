@@ -1,7 +1,7 @@
 ---
-title: "Adafruit_STMPE610 Drop-In Compatibility Guide"
+title: "Adafruit_STMPE610 Drop-In Compatibility for XPT2046"
 sidebarTitle: "Adafruit Compat"
-description: "XPT2046_Touchscreen is API-compatible with Adafruit_STMPE610. Migrate existing sketches by swapping the library include and constructor with no other code changes."
+description: "XPT2046_Touchscreen mirrors the Adafruit_STMPE610 API. Swap the include and constructor to migrate existing sketches with no other code changes required."
 ---
 
 XPT2046_Touchscreen is intentionally designed to mirror the API of `Adafruit_STMPE610`, the library used by Adafruit's resistive touchscreen breakouts. Sketches written for Adafruit touch controllers can be migrated to XPT2046-based displays by changing only the `#include` directive and the object constructor — every touch-reading call stays identical.

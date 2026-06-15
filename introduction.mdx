@@ -16,11 +16,13 @@ The library manages all SPI communication with the XPT2046 so your sketch never 
 
 - **Touch detection** — `touched()` returns `true` the moment a finger is on the screen, using a built-in pressure threshold of 300 (out of 4095) to filter noise.
 - **Coordinate reading** — `getPoint()` returns a `TS_Point` struct with 12-bit `x`, `y`, and `z` (pressure) fields, each ranging from 0 to 4095.
-- **Raw data access** — `readData(uint16_t *x, uint16_t *y, uint8_t *z)` writes the same values into caller-supplied pointers.
+- **Raw data access** — `readData(uint16_t *x, uint16_t *y, uint8_t *z)` writes the current touch position into caller-supplied pointers. Note that `z` is `uint8_t*`, so the pressure value is truncated to the range **0–255** (unlike `TS_Point.z` from `getPoint()`, which is `int16_t` and spans the full 12-bit range).
 - **Rotation** — `setRotation(n)` accepts values 0–3 and rotates the coordinate frame to match any display orientation, using the same numbering as Adafruit and ILI9341_t3 TFT libraries.
 - **Interrupt pin support** — pass a `TIRQ_PIN` to the constructor and the library attaches a hardware interrupt internally. Subsequent calls to `touched()` and `getPoint()` skip the SPI bus entirely when no touch has occurred, keeping your MCU's SPI lines idle and preventing the Teensy's LED from flickering on every poll.
+- **IRQ-only polling** — `tirqTouched()` returns `true` if the interrupt flag has been set, without triggering an SPI read. Useful for wakeup scenarios.
+- **Buffer status** — `bufferEmpty()` returns `true` when the last valid sample is older than 3 ms (i.e., no fresh data is buffered). `bufferSize()` always returns `1`, reflecting the library's single-sample buffer.
 - **Alternate SPI ports** — `begin(SPI1)` (or any `SPIClass` instance) lets you use a non-default hardware SPI peripheral.
-- **FlexIO SPI** — on Teensy 4.x, `begin(FlexIOSPI)` is supported when the `FlexIOSPI` library is present.
+- **FlexIO SPI** — on Teensy 4.x, `begin(FlexIOSPI &wflexspi)` is supported when the `FlexIOSPI` library is present.
 
 ## Adafruit_STMPE610 Compatibility
 

@@ -1,7 +1,7 @@
 ---
-title: "XPT2046_Touchscreen Class — Full API Reference"
+title: "XPT2046_Touchscreen Arduino Library — API Reference"
 sidebarTitle: "XPT2046_Touchscreen"
-description: "Complete reference for the XPT2046_Touchscreen class: constructor, begin, touched, tirqTouched, getPoint, readData, setRotation, bufferEmpty, and bufferSize."
+description: "Full API reference for XPT2046_Touchscreen: constructor, begin, touched, tirqTouched, getPoint, readData, setRotation, and buffer helpers."
 ---
 
 `XPT2046_Touchscreen` is the main driver class for the XPT2046 resistive touch controller. It manages SPI communication with the chip, applies best-two-of-three noise filtering across three consecutive X/Y samples, handles optional interrupt-driven wake detection through the T_IRQ pin, and exposes touch coordinates through a consistent interface compatible with the Adafruit_STMPE610 library.
@@ -231,7 +231,7 @@ These methods exist to make `XPT2046_Touchscreen` a drop-in replacement for `Ada
 
 ### `bufferEmpty()`
 
-Returns `true` if the last successful SPI read was completed more than 3 ms ago (`MSEC_THRESHOLD`). Mirrors the Adafruit_STMPE610 method of the same name, which reports whether the chip's FIFO is empty.
+Returns `true` if the last successful SPI read was completed **less than** 3 ms ago (`MSEC_THRESHOLD`), meaning fresh data is available in the buffer. Mirrors the Adafruit_STMPE610 method of the same name, which reports whether the chip's FIFO has data to read.
 
 ```cpp
 bool bufferEmpty()
